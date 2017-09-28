@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.26730.12
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PM2.5", "PM2.5\PM2.5.csproj", "{571C223F-91D6-444A-8AA4-BF98D786246E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PMS5003T_Reader", "Reader\PMS5003T_Reader.csproj", "{71F41721-50C7-41C8-AAE3-021ADAEF7CA4}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{571C223F-91D6-444A-8AA4-BF98D786246E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{571C223F-91D6-444A-8AA4-BF98D786246E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{571C223F-91D6-444A-8AA4-BF98D786246E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{571C223F-91D6-444A-8AA4-BF98D786246E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{71F41721-50C7-41C8-AAE3-021ADAEF7CA4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{71F41721-50C7-41C8-AAE3-021ADAEF7CA4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{71F41721-50C7-41C8-AAE3-021ADAEF7CA4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{71F41721-50C7-41C8-AAE3-021ADAEF7CA4}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {4A6A41A4-7748-42EC-AD3F-A5B554FF0F5A}
+	EndGlobalSection
+EndGlobal
