@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Diagnostics;
 using System.IO.Ports;
+using System.Threading;
 
 namespace Sensor
 {
@@ -23,8 +25,15 @@ namespace Sensor
         public byte[] RawData { get; set; } = null;
     }
 
+    /// <summary>
+    /// Sensor Reader that support PMS5003T
+    /// </summary>
     public class PMS5003T : IDisposable
     {
+        /// <summary>
+        /// Ctor
+        /// </summary>
+        /// <param name="port">Serial port</param>
         public PMS5003T(string port)
         {
             _serialPort = new SerialPort(port)
@@ -40,6 +49,11 @@ namespace Sensor
             _serialPort.Open();
         }
 
+        /// <summary>
+        /// Probe the port to check if there is a PMS5003x device attached
+        /// </summary>
+        /// <param name="port"></param>
+        /// <returns></returns>
         public static bool ProbePort(string port)
         {
             try
@@ -47,7 +61,12 @@ namespace Sensor
                 using (var pms = new PMS5003T(port))
                 {
                     SensorData data;
-                    return pms.ReadData(out data);
+                    if (pms.ReadData(out data))
+                    {
+                        return true;
+                    }
+
+                    return pms.SetStandbyMode(false);
                 }
             }
             catch(Exception)
@@ -56,12 +75,18 @@ namespace Sensor
             }
         }
 
+        /// <summary>
+        /// Read the device
+        /// </summary>
+        /// <param name="data">output of sensor data</param>
+        /// <returns>true if read ok, else read error</returns>
         public bool ReadData(out SensorData data)
         {
             byte[] buffer = new byte[32];
             bool timeout;
 
-            if (!ReadPacket(buffer, 32, out timeout))
+            int cnt = ReadPacket(buffer, 32, out timeout);
+            if (cnt != 32)
             {
                 data = null;
                 return false;
@@ -88,13 +113,86 @@ namespace Sensor
         }
 
         /// <summary>
+        /// Set the data read mode
+        /// </summary>
+        /// <param name="passive">true: passive mode, default is active mode after power on</param>
+        public bool SetReadMode(bool passive)
+        {
+            WriteCommand(0xe1, passive ? 0 : 1);
+            byte[] buf = new byte[8];
+            bool timeout;
+            int len = ReadPacket(buf, 8, out timeout);
+            return len == 8 && buf[4] == 0xe1;
+        }
+
+        /// <summary>
+        /// Set the standby mode
+        /// Note: when it leaves standy mode, it will take a few seconds to allow the fan to spin up.  It also reset the read mode to active mode.
+        /// </summary>
+        /// <param name="standby">true: enter standby mode, false: go back to active mode, </param>
+        public bool SetStandbyMode(bool standby)
+        {
+            WriteCommand(0xe4, standby ? 0 : 1);
+            if (!standby)
+            {
+                Stopwatch sw = new Stopwatch();
+                sw.Start();
+                SensorData data;
+                bool actived;
+                do
+                {
+                    actived = ReadData(out data);
+                }
+                while (!actived && sw.Elapsed.TotalSeconds < 4) ;
+                return actived;
+            }
+            else
+            {
+                byte[] buf = new byte[8];
+                bool timeout;
+                int len = ReadPacket(buf, 8, out timeout);
+                return len == 8 && buf[4] == 0xe4;
+            }
+        }
+
+        /// <summary>
+        /// Read one sample in passive mode
+        /// </summary>
+        public bool PassiveRead(out SensorData data)
+        {
+            WriteCommand(0xe2, 0);
+            Thread.Sleep(100);
+            return ReadData(out data);
+        }
+
+        /// <summary>
+        /// Write command
+        /// </summary>
+        /// <param name="cmd">command</param>
+        /// <param name="payload">16 bit payload of command</param>
+        protected void WriteCommand(byte cmd, int payload)
+        {
+            byte[] cmdbuf = new byte[7];
+            int csum = 0x42 + 0x4d + cmd + ((payload >> 8)&0xff) + (payload & 0xff); 
+            cmdbuf[0] = 0x42;
+            cmdbuf[1] = 0x4d;
+            cmdbuf[2] = cmd;
+            cmdbuf[3] = (byte)((payload>>8)&0xff);
+            cmdbuf[4] = (byte)(payload &0xff);
+            cmdbuf[5] = (byte)((csum>>8)&0xff);
+            cmdbuf[6] = (byte)(csum &0xff);
+
+            _serialPort.Write(cmdbuf, 0, 7);
+        }
+
+        /// <summary>
         /// Read a packet from the sensor
         /// </summary>
         /// <param name="buffer">buffer at least len bytes to receive the full packet</param>
         /// <param name="len">expected packet length</param>
         /// <param name="timeOut">if read timeout or failed to find sync head in more than two packet's length</param>
-        /// <returns>true if valid packet received,  false if packet error or timeout</returns>
-        protected bool ReadPacket(byte[] buffer, int len, out bool timeOut)
+        /// <returns>actual length of packet, -1 for error</returns>
+        protected int ReadPacket(byte[] buffer, int len, out bool timeOut)
         {
             try
             {
@@ -126,7 +224,7 @@ namespace Sensor
                 if (sync == 0)
                 {
                     timeOut = true;
-                    return false;
+                    return -1;
                 }
 
                 // len
@@ -135,37 +233,35 @@ namespace Sensor
 
                 uint packetLen = ((uint)buffer[2] << 8) | (uint)buffer[3];
 
-                // check length
-                if ((uint)len - 4 != packetLen)
-                {
-                    return false;
-                }
+                int realLen = packetLen + 4 < len ? (int)packetLen + 4 : len;
 
                 // read payload and crc
-                for (int i = 4; i < len; i++)
+                for (int i = 4; i < realLen; i++)
                 {
                     buffer[i] = (byte)_serialPort.ReadByte();
                 }
 
                 // check crc
                 int crc = 0;
-                for (int i = 0; i < len - 2; i++)
+                for (int i = 0; i < realLen - 2; i++)
                 {
                     crc += buffer[i];
                 }
 
+                bool crcValid = (crc & 0xff) == buffer[realLen - 1] && (crc >> 8) == buffer[realLen - 2];
+
                 // return if crc check is valid
-                return (crc & 0xff) == buffer[len - 1] && (crc >> 8) == buffer[len - 2];
+                return realLen;
             }
             catch (TimeoutException)
             {
                 timeOut = true;
-                return false;
+                return -1;
             }
             catch (Exception)
             {
                 timeOut = false;
-                return false;
+                return -1;
             }
         }
 

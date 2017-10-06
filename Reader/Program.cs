@@ -20,13 +20,26 @@ namespace Reader
             Environment.Exit(0);
         }
 
+        static void ShowMenu()
+        {
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.BackgroundColor = ConsoleColor.Black;
+
+            Console.WriteLine("---  command ------------------");
+            Console.WriteLine("p : toggle passive/active mode");
+            Console.WriteLine("s : toggle standby/work mode");
+            Console.WriteLine("r : read in passive mode");
+            Console.WriteLine("x : exit");
+            Console.WriteLine("-------------------------------");
+        }
+
         static void Main(string[] args)
         {
             Console.Clear();
 
             Console.CancelKeyPress += new ConsoleCancelEventHandler(MyBreakHandler);
-
-            while (true)
+            bool keepRun = true;
+            while (keepRun)
             {
                 Console.ForegroundColor = ConsoleColor.White;
                 Console.BackgroundColor = ConsoleColor.DarkCyan;
@@ -52,14 +65,93 @@ namespace Reader
                     continue;
                 }
 
+                ShowMenu();
+
                 using (var sensor = new Sensor.PMS5003T(pms5003tPort))
                 {
-                    Sensor.SensorData data;
+                    bool passiveMode = false;
+                    bool standbyMode = false;
+
+                    Sensor.SensorData data = null;
+                    bool dataReadOK = false;
                     int retry = 0;
                     int maxRetry = 2;
-                    while (retry < maxRetry)
+                    while (retry < maxRetry && keepRun)
                     {
-                        if (!sensor.ReadData(out data))
+                        ConsoleKeyInfo key = new ConsoleKeyInfo();
+                        bool keyPressed = false;
+
+                        if (passiveMode || standbyMode)
+                        {
+                            ShowMenu();
+                            Console.Write("> ");
+                            key = Console.ReadKey(true);
+                            keyPressed = true;
+                        }
+                        else
+                        {
+                            if (Console.KeyAvailable)
+                            {
+                                key = Console.ReadKey(true);
+                                keyPressed = true;
+                            }
+                        }
+
+                        if (keyPressed)
+                        {
+                            if ((key.Modifiers & (ConsoleModifiers.Alt | ConsoleModifiers.Control)) == 0)
+                            {
+                                switch (key.KeyChar)
+                                {
+                                    case 'p':
+                                    case 'P':
+                                        passiveMode = !passiveMode;
+                                        Console.WriteLine(passiveMode ? "Enter Passive Read Mode" : "Enter Active Read Mode");
+                                        sensor.SetReadMode(passiveMode);
+                                        continue;
+                                    case 's':
+                                    case 'S':
+                                        standbyMode = !standbyMode;
+                                        Console.WriteLine(standbyMode ? "Enter Standby Mode" : "Enter Active Mode");
+                                        sensor.SetStandbyMode(standbyMode);
+                                        if (!standbyMode)
+                                        {
+                                            // it will switch back to active mode when leaving standby mode
+                                            passiveMode = false;
+                                        }
+                                        continue;
+                                    case 'r':
+                                    case 'R':
+                                        if (standbyMode)
+                                        {
+                                            Console.WriteLine("Can't read in standby mode");
+                                            continue;
+                                        }
+
+                                        if (passiveMode)
+                                        {
+                                            dataReadOK = sensor.PassiveRead(out data);
+                                            break;
+                                        }
+                                        else
+                                        {
+                                            continue;
+                                        }
+                                    case 'x':
+                                    case 'X':
+                                        keepRun = false;
+                                        Console.WriteLine("Exitting ...");
+                                        continue;
+                                }
+                            }
+                        }
+
+                        if (!passiveMode && !standbyMode)
+                        {
+                            dataReadOK = sensor.ReadData(out data);
+                        }
+
+                        if (!dataReadOK)
                         {
                             retry++;
                             Console.ForegroundColor = ConsoleColor.Yellow;
@@ -111,9 +203,12 @@ namespace Reader
                         Console.WriteLine();
                     }
 
-                    Console.ForegroundColor = ConsoleColor.Yellow;
-                    Console.BackgroundColor = ConsoleColor.DarkCyan;
-                    Console.WriteLine("* Failed to read data, restart sensor probing ...");
+                    if (keepRun)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+                        Console.BackgroundColor = ConsoleColor.DarkCyan;
+                        Console.WriteLine("* Failed to read data, restart sensor probing ...");
+                    }
                 }
             }
         }
